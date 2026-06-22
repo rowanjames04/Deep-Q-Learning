@@ -1,2 +1,4 @@
 flappy-bird-gymnasium
 tensorflow
+torch
+torchvision
