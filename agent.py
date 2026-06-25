@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import flappy_bird_gymnasium
 import gymnasium
 from dqn import DQN
@@ -10,7 +11,6 @@ import random
 device = 'cuda' if torch.cuda.is_available() else 'cpu' #this can probably be deleted later
 
 class Agent:
-
     def __init__(self, hyperparameter_set):
         with open('hyperparameters.yml', 'r') as file:
             all_hyperparameter_sets = yaml.safe_load(file)
@@ -21,6 +21,12 @@ class Agent:
         self.epsilon_init = hyperparameters['epsilon_init']
         self.epsilon_decay = hyperparameters['epsilon_decay']
         self.epsilon_min = hyperparameters['epsilon_min']
+        self.network_sync_rate = hyperparameters['network_sync_rate']
+        self.learning_rate_a = hyperparameters['learning_rate_a']
+        self.discount_factor_g = hyperparameters['discount_factor_g']
+
+        self.loss_fun = nn.MSELoss()
+        self.optimiser = None
     
     def run(self, is_training=True, render=False):
         # env = gymnasium.make("FlappyBird-v0", render_mode="human" if render else None, use_lidar=False)
@@ -38,6 +44,13 @@ class Agent:
             memory = ReplayMemory(self.replay_memory_size)
 
             epsilon = self.epsilon_init
+
+            target_dqn = DQN(num_states, num_actions).to(device)
+            target_dqn.load_state_dict(policy_dqn.state_dict())
+
+            step_count = 0
+
+            self.optimiser = torch.optim.Adam(policy_dqn.parameters(), 1r=self.learning_rate_a)
         
 
         for episode in itertools.count():
@@ -69,6 +82,8 @@ class Agent:
                 if is_training:
                     memory.append((state, action, new_state, reward, terminated))
 
+                    step_count += 1
+
                 state = new_state
 
             rewards_per_episode.append(episode_reward)
@@ -76,6 +91,30 @@ class Agent:
             epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
             epsilon_history.append(epsilon)
 
+            if len(memory) > self.mini_batch_size:
+                mini_batch = memory.sample(self.mini_batch_size)
+
+                self.optimise(mini_batch, policy_dqn, target_dqn)
+
+                if step_count > self.network_sync_rate:
+                    target_dqn.load_state_dict(policy_dqn.state_dict())
+                    step_count = 0
+
+    def optimise(self, mini_batch, policy_dqn, target_dqn):
+        for state, action, new_state, reward, terminated in mini_batch:
+            if terminated:
+                target = reward
+            else:
+                with torch.no_grad():
+                    target_q = reward + self.discount_factor_g * target_dqn(new_state).max()
+
+            current_q = policy_dqn(state)
+
+            loss = self.loss_fn(current_q, target_q)
+
+            self.optimiser.zero_grad()
+            loss.backward()
+            self.optimiser.step()
 
 if __name__ == '__main__':
     agent = Agent("cartpole1")
