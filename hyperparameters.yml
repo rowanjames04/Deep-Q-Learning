@@ -12,6 +12,8 @@ cartpole1:
   fc1_nodes: 128
   enable_double_dqn: False
   enable_dueling_dqn: True
+  device: auto
+  seed: 42
 
 flappybird1:
   env_id: FlappyBird-v0
@@ -29,3 +31,5 @@ flappybird1:
     use_lidar: False
   enable_double_dqn: True
   enable_dueling_dqn: True
+  device: auto
+  seed: 42

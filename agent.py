@@ -24,6 +24,7 @@ DATE_FORMAT = "%m-%d %H:%M:%S"
 
 # Directory for saving run info
 RUNS_DIR = "runs"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(RUNS_DIR, exist_ok=True)
 
 # 'Agg': used to generate plots as images and save them to a file instead of rendering to screen
@@ -35,7 +36,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class Agent():
 
     def __init__(self, hyperparameter_set):
-        with open('hyperparameters.yml', 'r') as file:
+        with open(os.path.join(BASE_DIR, 'hyperparameters.yml'), 'r') as file:
             all_hyperparameter_sets = yaml.safe_load(file)
             hyperparameters = all_hyperparameter_sets[hyperparameter_set]
 
@@ -56,6 +57,7 @@ class Agent():
         self.env_make_params    = hyperparameters.get('env_make_params',{}) # Get optional environment-specific parameters, default to empty dict
         self.enable_double_dqn  = hyperparameters['enable_double_dqn']      # double dqn on/off flag
         self.enable_dueling_dqn = hyperparameters['enable_dueling_dqn']     # dueling dqn on/off flag
+        self.seed               = hyperparameters.get('seed')               # optional rng seed
 
         # Neural Network
         self.loss_fn = nn.MSELoss()          # NN Loss function. MSE=Mean Squared Error can be swapped to something else.
@@ -67,6 +69,13 @@ class Agent():
         self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.png')
 
     def run(self, is_training=True, render=False):
+        if is_training and self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(self.seed)
+
         if is_training:
             start_time = datetime.now()
             last_graph_update_time = start_time
@@ -97,7 +106,7 @@ class Agent():
             epsilon = self.epsilon_init
 
             # Initialize replay memory
-            memory = ReplayMemory(self.replay_memory_size)
+            memory = ReplayMemory(self.replay_memory_size, seed=self.seed)
 
             # Create the target network and make it identical to the policy network
             target_dqn = DQN(num_states, num_actions, self.fc1_nodes, self.enable_dueling_dqn).to(device)
@@ -113,7 +122,7 @@ class Agent():
             step_count=0
 
             # Track best reward
-            best_reward = -9999999
+            best_reward = -float('inf')
         else:
             # Load learned policy
             policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
@@ -121,10 +130,17 @@ class Agent():
             # switch model to evaluation mode
             policy_dqn.eval()
 
+        if is_training and self.seed is not None:
+            env.action_space.seed(self.seed)
+        seeded = False
+
         # Train INDEFINITELY, manually stop the run when you are satisfied (or unsatisfied) with the results
         for episode in itertools.count():
 
-            state, _ = env.reset()  # Initialize environment. Reset returns (state,info).
+            # Seed only the first reset so episodes stay stochastic after the first.
+            reset_seed = self.seed if (is_training and self.seed is not None and not seeded) else None
+            state, _ = env.reset(seed=reset_seed)  # Initialize environment. Reset returns (state,info).
+            seeded = True
             state = torch.tensor(state, dtype=torch.float, device=device) # Convert state to tensor directly on device
 
             terminated = False      # True when agent reaches goal or fails
@@ -153,13 +169,13 @@ class Agent():
                 # Accumulate rewards
                 episode_reward += reward
 
-                # Convert new state and reward to tensors on device
+                # Convert new state to a tensor on device
                 new_state = torch.tensor(new_state, dtype=torch.float, device=device)
-                reward = torch.tensor(reward, dtype=torch.float, device=device)
 
                 if is_training:
-                    # Save experience into memory
-                    memory.append((state, action, new_state, reward, terminated))
+                    # Store CPU copies + a raw float reward so the replay buffer
+                    # doesn't hold device tensors (which would pin GPU memory).
+                    memory.append((state.cpu(), action.cpu(), new_state.cpu(), float(reward), terminated))
 
                     # Increment step counter
                     step_count+=1
@@ -173,7 +189,11 @@ class Agent():
             # Save model when new best reward is obtained.
             if is_training:
                 if episode_reward > best_reward:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({(episode_reward-best_reward)/best_reward*100:+.1f}%) at episode {episode}, saving model..."
+                    if best_reward == -float('inf'):
+                        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} at episode {episode}, saving model..."
+                    else:
+                        delta_pct = (episode_reward - best_reward) / abs(best_reward) * 100
+                        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({delta_pct:+.1f}%) at episode {episode}, saving model..."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as file:
                         file.write(log_message + '\n')
@@ -233,16 +253,12 @@ class Agent():
         # Transpose the list of experiences and separate each element
         states, actions, new_states, rewards, terminations = zip(*mini_batch)
 
-        # Stack tensors to create batch tensors
-        # tensor([[1,2,3]])
-        states = torch.stack(states)
-
-        actions = torch.stack(actions)
-
-        new_states = torch.stack(new_states)
-
-        rewards = torch.stack(rewards)
-        terminations = torch.tensor(terminations).float().to(device)
+        # Stack the CPU tensors stored in memory and move the batch to the device
+        states = torch.stack(states).to(device)
+        actions = torch.stack(actions).to(device)
+        new_states = torch.stack(new_states).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float, device=device)
+        terminations = torch.tensor(terminations, dtype=torch.float, device=device)
 
         with torch.no_grad():
             if self.enable_double_dqn:
