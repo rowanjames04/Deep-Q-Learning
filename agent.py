@@ -101,20 +101,26 @@ class Agent:
                     step_count = 0
 
     def optimise(self, mini_batch, policy_dqn, target_dqn):
-        for state, action, new_state, reward, terminated in mini_batch:
-            if terminated:
-                target = reward
-            else:
-                with torch.no_grad():
-                    target_q = reward + self.discount_factor_g * target_dqn(new_state).max()
+        
+        states, actions, new_states, rewards, terminations = zip(*mini_batch)
 
-            current_q = policy_dqn(state)
+        states = torch.stack(states)
+        actions = torch.stack(actions)
+        new_states = torch.stack(new_states)
+        rewards = torch.stack(rewards)
+        terminations = torch.tensor(terminations).float().to(device)
 
-            loss = self.loss_fn(current_q, target_q)
+        with torch.no_grad():
+            target_q = rewards + (1 - terminations) * self.discount_factor_g * target_dqn(new_states).max(dim=1)[0]
 
-            self.optimiser.zero_grad()
-            loss.backward()
-            self.optimiser.step()
+
+        current_q = policy_dqn(states).gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
+
+        loss = self.loss_fn(current_q, target_q)
+
+        self.optimiser.zero_grad()
+        loss.backward()
+        self.optimiser.step()
 
 if __name__ == '__main__':
     agent = Agent("cartpole1")
