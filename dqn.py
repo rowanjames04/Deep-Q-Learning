@@ -4,21 +4,22 @@ import torch.nn.functional as F
 
 class DQN(nn.Module):
 
-    def __init__(self, state_dim, action_dim, hidden_dim=256, enable_dueling_dqn=True):
+    def __init__(self, state_dim, action_dim, hidden_dim=256, enable_dueling_dqn=True,
+                 dueling_hidden_dim=256):
         super(DQN, self).__init__()
 
-        self.enable_dueling_dqn=enable_dueling_dqn
+        self.enable_dueling_dqn = enable_dueling_dqn
 
         self.fc1 = nn.Linear(state_dim, hidden_dim)
 
         if self.enable_dueling_dqn:
             # Value stream
-            self.fc_value = nn.Linear(hidden_dim, 256)
-            self.value = nn.Linear(256, 1)
+            self.fc_value = nn.Linear(hidden_dim, dueling_hidden_dim)
+            self.value = nn.Linear(dueling_hidden_dim, 1)
 
             # Advantages stream
-            self.fc_advantages = nn.Linear(hidden_dim, 256)
-            self.advantages = nn.Linear(256, action_dim)
+            self.fc_advantages = nn.Linear(hidden_dim, dueling_hidden_dim)
+            self.advantages = nn.Linear(dueling_hidden_dim, action_dim)
 
         else:
             self.output = nn.Linear(hidden_dim, action_dim)
@@ -35,7 +36,7 @@ class DQN(nn.Module):
             a = F.relu(self.fc_advantages(x))
             A = self.advantages(a)
 
-            # Calc Q
+            # Calc Q: Q(s,a) = V(s) + (A(s,a) - mean_a(A(s,a')))
             Q = V + A - torch.mean(A, dim=1, keepdim=True)
 
         else:

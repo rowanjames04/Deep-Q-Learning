@@ -10,9 +10,12 @@ cartpole1:
   discount_factor_g: 0.99
   stop_on_reward: 100000
   fc1_nodes: 128
+  dueling_hidden_dim: 128
   enable_double_dqn: False
   enable_dueling_dqn: True
+  # Optional: 'auto' uses CUDA if available else CPU. Set to 'cpu' or 'cuda' to force.
   device: auto
+  # Optional: set an integer to seed rng (env, random, numpy, torch) for reproducible runs.
   seed: 42
 
 flappybird1:
@@ -27,6 +30,7 @@ flappybird1:
   discount_factor_g: 0.99
   stop_on_reward: 100000
   fc1_nodes: 512
+  dueling_hidden_dim: 256
   env_make_params:
     use_lidar: False
   enable_double_dqn: True
