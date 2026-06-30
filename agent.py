@@ -30,7 +30,6 @@ os.makedirs(RUNS_DIR, exist_ok=True)
 matplotlib.use('Agg')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = 'cpu' # force cpu, sometimes GPU not always faster than CPU due to overhead of moving data to GPU
 
 # Deep Q-Learning Agent
 class Agent():
@@ -39,7 +38,6 @@ class Agent():
         with open('hyperparameters.yml', 'r') as file:
             all_hyperparameter_sets = yaml.safe_load(file)
             hyperparameters = all_hyperparameter_sets[hyperparameter_set]
-            # print(hyperparameters)
 
         self.hyperparameter_set = hyperparameter_set
 
@@ -214,13 +212,11 @@ class Agent():
         for x in range(len(mean_rewards)):
             mean_rewards[x] = np.mean(rewards_per_episode[max(0, x-99):(x+1)])
         plt.subplot(121) # plot on a 1 row x 2 col grid, at cell 1
-        # plt.xlabel('Episodes')
         plt.ylabel('Mean Rewards')
         plt.plot(mean_rewards)
 
         # Plot epsilon decay (Y-axis) vs episodes (X-axis)
         plt.subplot(122) # plot on a 1 row x 2 col grid, at cell 2
-        # plt.xlabel('Time Steps')
         plt.ylabel('Epsilon Decay')
         plt.plot(epsilon_history)
 

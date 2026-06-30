@@ -1,2 +1,7 @@
 .venv
 __pycache__
+.DS_Store
+
+# Generated run artifacts (model checkpoints, plots, logs) — keep the dir, ignore contents.
+runs/*
+!runs/.gitkeep
