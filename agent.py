@@ -25,7 +25,7 @@ class Agent:
         self.learning_rate_a = hyperparameters['learning_rate_a']
         self.discount_factor_g = hyperparameters['discount_factor_g']
 
-        self.loss_fun = nn.MSELoss()
+        self.loss_fn = nn.MSELoss()
         self.optimiser = None
     
     def run(self, is_training=True, render=False):
@@ -50,7 +50,7 @@ class Agent:
 
             step_count = 0
 
-            self.optimiser = torch.optim.Adam(policy_dqn.parameters(), 1r=self.learning_rate_a)
+            self.optimiser = torch.optim.Adam(policy_dqn.parameters(), lr=self.learning_rate_a)
         
 
         for episode in itertools.count():
